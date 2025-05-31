@@ -1,0 +1,145 @@
+#Import all required
+import numpy as np
+from qutip import *
+import matplotlib.pyplot as plt
+import math
+from scipy.special import comb
+from numpy import linalg as LA
+from scipy.linalg import kron
+from scipy.linalg import expm
+import scipy as sp
+from datetime import datetime
+
+#Specifying parameters for the Hilbert dimension in Angular Momentum space
+N1 = 16
+J1 = 8
+N2 = 2
+J2 = 1
+Ne = np.arange(N1)
+hbar = 1
+
+#Setting optimum parameters
+K =  0.125
+P = 0.004227759197324414
+Deltasys = 0.19595993322203673
+gammaRYD = 0.00002
+gammaanc = 0.0001
+g = 0.0042
+Deltaanc = 0.24
+
+#Setting eigenstates of the Hamiltonian as logical states with even and odd parity (the last four ones)
+psi2m = Qobj(np.array([-2.178671390813997e-27, -9.367506770274758e-17, -0.5434936623071993, 3.738085808782448e-12, -8.06584391090032e-27, -8.76714392254828e-17, -0.7099771081769362, 3.98228246574748e-12, 0.0, 5.551115123125783e-17, -0.438368649221732, 2.014388655879884e-12, -3.2311742677852644e-27, -4.163336342344337e-17, -0.09154273469881337, 2.5438561413113194e-13])).unit()
+psi2= Qobj(np.array([3.7409565932182027e-16, 1.1102230246251565e-16, -3.1669426738354353e-12, -0.6415160012087668, 1.384958197351893e-15, 3.3306690738754696e-16, -4.137024056660721e-12, -0.6834206467088028, 1.2677176804422903e-15, 2.0881399446714931e-16, -2.5543662609502157e-12, -0.3456717255316494, 5.551115123125783e-16, 6.30253834508529e-17, -5.334192147063909e-13, -0.04364055468491448])).unit()
+psi0 = Qobj(np.array([-0.19386299301346313, 0.0, 0.0, -1.27675647831893e-15, -0.7046788464218756, 7.985244513099692e-28, -4.2401273655629385e-30, -1.374165161746327e-15, -0.6333634385113623, 5.9892404940302915e-28, -2.663571493559374e-30, -7.001074178662693e-16, -0.2543533331852753, 1.817650211752941e-28, -5.589557670742015e-31, -8.877658575002449e-17])).unit()
+psi1= Qobj(np.array([2.134310052006726e-28, 0.38967068065716226, 2.7755575615628914e-17, 2.7755575615628914e-16, 0.0, 0.724832537949478, -1.3688647597535855e-16, 2.220446049250313e-16, 6.9727600301759895e-28, 0.5436477052513643, -1.8041124150158794e-16, 1.2894551962641665e-16, 2.799963175468829e-28, 0.1649900758858797, 1.942890293094024e-16, 0.0])).unit()
+
+
+#Creating Hamiltonian
+J4p = np.zeros((len(Ne), len(Ne)))
+J4m = np.zeros((len(Ne), len(Ne)))
+Jk = np.zeros((len(Ne), len(Ne)))
+Jd = np.zeros((len(Ne), len(Ne)))
+Ad = np.zeros((2, 2))
+Ap = np.zeros((2, 2))
+Am = np.zeros((2, 2))
+Jp = np.zeros((len(Ne), len(Ne)))
+Jm = np.zeros((len(Ne), len(Ne)))
+
+
+# Populate matrices based on conditions
+for x in range(len(Ne)):
+    Jk[x, x] = Ne[x]**2 
+    Jd[x, x] = Ne[x]
+    for y in range(len(Ne)):
+        m = Ne[x] - J1
+        if y == x + 4:
+            J4p[y, x] = np.sqrt((J1 - m) * (J1 + m + 1) * (J1 - m - 1) * (J1 + m + 2) * (J1 - m - 2) * (J1 + m + 3) * (J1 - m - 3) * (J1 + m + 4))
+        if y == x - 4:
+            J4m[y, x] = np.sqrt((J1 + m) * (J1 - m + 1) * (J1 + m - 1) * (J1 - m + 2) * (J1 + m - 2) * (J1 - m + 3) * (J1 + m - 3) * (J1 - m + 4))
+        if y == x + 1:
+            Jp[y, x] = np.sqrt((J1 - m) * (J1 + m + 1))
+        if y == x - 1:
+            Jm[y, x] = np.sqrt((J1 + m) * (J1 - m + 1))
+            
+for i in range (0, 2):
+    Ad[i, i] = Ne[i]
+    for j in range(0, 2):
+        if j == i + 1:
+            n = Ne[i] - J2
+            Ap[j,i] = hbar * np.sqrt((J2 - n) * (J2 + n + 1))
+
+        if j == i - 1:
+            n = Ne[i] - J2
+            Am[j,i] = hbar * np.sqrt((J2 + n) * (J2 - n + 1))
+
+    
+H4p = Qobj(J4p, dims=[[len(Ne)], [len(Ne)]])
+H4m = Qobj(J4m, dims=[[len(Ne)], [len(Ne)]])
+H2a = Qobj(Jk, dims=[[len(Ne)], [len(Ne)]])
+H1a = Qobj(Jd, dims=[[len(Ne)], [len(Ne)]])
+Hp = Qobj(Jp, dims=[[len(Ne)], [len(Ne)]])
+Hm = Qobj(Jm, dims=[[len(Ne)], [len(Ne)]])
+ad = Qobj(Ad, dims=[[2], [2]])
+ancp = Qobj(Ap, dims=[[2], [2]])
+ancm = Qobj(Am, dims=[[2], [2]])
+
+
+adag = tensor(H4p, qeye(2))
+a = tensor(H4m, qeye(2))  
+b = tensor(H2a, qeye(2))
+p = tensor(H1a, qeye(2))
+l = tensor(qeye(len(Ne)), ad)
+sydag = tensor(Hp, qeye(2))
+sy = tensor(Hm, qeye(2))
+ap = tensor(qeye(len(Ne)), ancp)
+am = tensor(qeye(len(Ne)), ancm)
+
+
+#Creating density matrix of initial states, the ancillary state, and the target density matrix
+rho_sys1 = ket2dm(psi1)
+rho_sys2 = ket2dm(psi2)
+rho_anc = Qobj([[1.0,0.0],[0.0, 0.0]])
+rho = tensor(rho_sys2, rho_anc)
+rho_target1 = tensor(rho_sys1, qeye(2))
+rho_target2 = tensor(rho_sys2, qeye(2))
+
+
+#Hamiltonian of the system
+H1 = -K * b + Deltasys * p + P/2 * (adag + a)
+
+#Hamiltonian of the coupled system and ancillary qubit
+H = H1 + Deltaanc * l + g * (sydag @ ap + sy @ am)
+
+#Setting time-steps
+dt = 0.3 / max(P, K, Deltasys, Deltaanc, g, gammaanc, gammaRYD)
+
+#Collapse operators
+c_ops = [np.sqrt(gammaRYD) * sy, np.sqrt(gammaanc) * am]
+#Time of evolution
+times = np.arange(0, 100, dt)
+#Solving the master equation
+options = Options(nsteps=1000000, atol=1e-12, rtol=1e-10, store_final_state=True, store_states=True)
+result = mesolve(H, rho, times, c_ops, options=options)
+
+
+#Obtaning expectation values
+fid1 = [expect(rho_target1, state) for state in result.states]
+
+fid2 = [expect(rho_target2, state) for state in result.states]
+
+fid3 = [expect(tensor(ket2dm(psi2m), qeye(2)), state) for state in result.states]
+
+fid4 = [expect(tensor(ket2dm(psi0), qeye(2)), state) for state in result.states]
+
+
+#Plot the results
+plt.plot(times, fid1, label='1mode')
+plt.plot(times, fid2, label='3mode')
+plt.plot(times, fid3, label='2mode')
+plt.plot(times, fid4, label='0mode')
+
+
+plt.xlabel('Time')
+plt.ylabel('Population of information space eigenstates (|0>L as initial state')
+plt.legend()
+plt.show()
